@@ -278,7 +278,7 @@ def load(volpath):
 
     try:
         # Adding this log for DEBUG
-        logging.warning("kv_str from meta file is %s", kv_str)
+        logging.warning("kv_str from meta file is %s ", kv_str)
         return json.loads(kv_str)
     except ValueError:
         # Adding this log for DEBUG
