@@ -27,6 +27,7 @@ import errno
 import time
 import threadutils
 import vmdk_utils
+import os
 
 # Python version 3.5.1
 PYTHON64_VERSION = 50659824
@@ -256,11 +257,20 @@ def load(volpath):
     """
     Load and return dictionary from the sidecar
     """
+    logging.info("Load dictionary from sidecar for vol path %s", volpath)
     meta_file = lib.DiskLib_SidecarMakeFileName(volpath.encode(),
                                                 DVOL_KEY.encode())
     retry_count = 0
     vol_name = vmdk_utils.get_volname_from_vmdk_path(volpath)
     while True:
+        try:
+            if os.stat(meta_file).st_size > 0:
+                logging.info("load:Meta file %s is not empty", meta_file)
+            else:
+                logging.info("load:Meta file %s is empty", meta_file)
+        except OSError:
+            logging.info("load:Meta file %s does not exist", meta_file)
+
         try:
             with open(meta_file, "r") as fh:
                 kv_str = fh.read()
@@ -268,20 +278,21 @@ def load(volpath):
         except IOError as open_error:
             # This is a workaround to the timing/locking with metadata files issue #626
             if open_error.errno == errno.EBUSY and retry_count <= vmdk_utils.VMDK_RETRY_COUNT:
-                logging.warning("Meta file %s busy for load(), retrying...", meta_file)
+                logging.warning("load:Meta file %s busy for load(), retrying...", meta_file)
                 vmdk_utils.log_volume_lsof(vol_name)
                 retry_count += 1
                 time.sleep(vmdk_utils.VMDK_RETRY_SLEEP)
             else:
-                logging.exception("Failed to access %s", meta_file)
+                logging.exception("load:Failed to access %s", meta_file)
                 return None
 
     try:
         return json.loads(kv_str)
     except ValueError:
         # Adding this log for DEBUG
-        logging.warning("kv_str from meta file is %s ", kv_str)
-        logging.exception("Failed to decode meta-data for %s", volpath)
+        logging.warning("load:Dump kv_str from meta file")
+        logging.warning(kv_str)
+        logging.exception("load:Failed to decode meta-data for %s", volpath)
         return None
 
 
@@ -290,6 +301,7 @@ def save(volpath, kv_dict):
     """
     Save the dictionary to side car.
     """
+    logging.info("Save the dictionary %s to sidecar for vol path %s", kv_dict, volpath)
     meta_file = lib.DiskLib_SidecarMakeFileName(volpath.encode(),
                                                 DVOL_KEY.encode())
     kv_str = json.dumps(kv_dict)
@@ -298,7 +310,15 @@ def save(volpath, kv_dict):
     vol_name = vmdk_utils.get_volname_from_vmdk_path(volpath)
     while True:
         try:
+            if os.stat(meta_file).st_size > 0:
+                logging.info("save:Meta file %s is not empty", meta_file)
+            else:
+                logging.info("save:Meta file %s is empty", meta_file)
+        except OSError:
+            logging.info("save:Meta file %s does not exist", meta_file)
+        try:
             with open(meta_file, "w") as fh:
+                logging.info("save: write %s to meta_file %s", kv_str, meta_file)
                 fh.write(align_str(kv_str, KV_ALIGN))
             break
         except IOError as open_error:
